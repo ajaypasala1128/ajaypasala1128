@@ -1,65 +1,48 @@
-from flask import Flask, render_template, request
-import pandas as pd
-import joblib
+from flask import Flask,request,render_template
+import numpy as np
+import pandas
+import sklearn
+import pickle
+
+model = pickle.load(open('model.pkl','rb'))
+sc = pickle.load(open('standscaler.pkl','rb'))
+mx = pickle.load(open('minmaxscaler.pkl','rb'))
+
 
 app = Flask(__name__)
 
-# Load the model
-stroke_model = joblib.load("model.joblib")
-
-# Helper function for prediction
-def predict_input(single_input):
-    input_df = pd.DataFrame([single_input])
-    encoded_cols, numeric_cols = stroke_model["encoded_cols"], stroke_model["numeric_cols"]
-    preprocessor = stroke_model["preprocessor"]
-    input_df[encoded_cols] = preprocessor.transform(input_df)
-    X = input_df[numeric_cols + encoded_cols]
-    prediction = stroke_model['model'].predict(X)
-    return prediction
-
-
-@app.route("/", methods=["GET", "POST"])
+@app.route('/')
 def index():
-    if request.method == "POST":
-        # Get form data
-        gender = request.form["gender"].lower()
-        age = int(request.form["age"])
-        hypertension = int(request.form["hypertension"])
-        heart_disease = int(request.form["heart_disease"])
-        ever_married = request.form["ever_married"].lower()
-        work_type = request.form["work_type"]
-        residence_type = request.form["residence_type"]
-        avg_glucose_level = float(request.form["avg_glucose_level"])
-        bmi = float(request.form["bmi"])
-        smoking_status = request.form["smoking_status"].lower()
-
-        # Map work type
-        work_type_mapping = {
-            "Government job": "Govt_job",
-            "Children": "children",
-            "Never Worked": "Never_worked",
-            "Private": "Private",
-        }
-
-        single_input = {
-            "gender": gender,
-            "age": age,
-            "hypertension": hypertension,
-            "heart_disease": heart_disease,
-            "ever_married": ever_married,
-            "work_type": work_type_mapping.get(work_type, work_type),
-            "Residence_type": residence_type,
-            "avg_glucose_level": avg_glucose_level,
-            "bmi": bmi,
-            "smoking_status": smoking_status,
-        }
-
-        # Predict and redirect to result page
-        prediction = predict_input(single_input)
-        result = "Likely" if prediction[0] == 1 else "Not Likely"
-        return render_template("result.html", result=result)
-
     return render_template("index.html")
+
+@app.route("/predict",methods=['POST'])
+def predict():
+    N = request.form['Nitrogen']
+    P = request.form['Phosporus']
+    K = request.form['Potassium']
+    temp = request.form['Temperature']
+    humidity = request.form['Humidity']
+    ph = request.form['pH']
+    rainfall = request.form['Rainfall']
+
+    feature_list = [N, P, K, temp, humidity, ph, rainfall]
+    single_pred = np.array(feature_list).reshape(1, -1)
+
+    mx_features = mx.transform(single_pred)
+    sc_mx_features = sc.transform(mx_features)
+    prediction = model.predict(sc_mx_features)
+
+    crop_dict = {1: "Rice", 2: "Maize", 3: "Jute", 4: "Cotton", 5: "Coconut", 6: "Papaya", 7: "Orange",
+                 8: "Apple", 9: "Muskmelon", 10: "Watermelon", 11: "Grapes", 12: "Mango", 13: "Banana",
+                 14: "Pomegranate", 15: "Lentil", 16: "Blackgram", 17: "Mungbean", 18: "Mothbeans",
+                 19: "Pigeonpeas", 20: "Kidneybeans", 21: "Chickpea", 22: "Coffee"}
+
+    if prediction[0] in crop_dict:
+        crop = crop_dict[prediction[0]]
+        result = "{} is the best crop to be cultivated right there".format(crop)
+    else:
+        result = "Sorry, we could not determine the best crop to be cultivated with the provided data."
+    return render_template('index.html',result = result)
 
 
 if __name__ == "__main__":
